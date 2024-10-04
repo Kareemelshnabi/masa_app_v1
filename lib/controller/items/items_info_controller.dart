@@ -1,0 +1,565 @@
+// ignore_for_file: avoid_print
+
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:mas_app/core/class/api.dart';
+import 'package:mas_app/core/class/status_request.dart';
+import 'package:mas_app/core/constant/colors.dart';
+import 'package:mas_app/core/function/handling_data.dart';
+import 'package:mas_app/data/data%20source/orders.dart';
+import 'package:mas_app/data/data%20source/register.dart';
+import 'package:mas_app/data/data%20source/search.dart';
+import 'package:mas_app/data/model/country_model.dart';
+import 'package:mas_app/data/model/product_model.dart';
+import 'package:mas_app/data/model/store_order_model.dart';
+import 'package:mas_app/generated/l10n.dart';
+import 'package:mas_app/main.dart';
+import 'package:mas_app/view/screens/register/main_register.dart';
+import 'package:mas_app/view/widget/loading.dart';
+import 'package:screen_go/extensions/responsive_nums.dart';
+import 'package:speech_to_text/speech_to_text.dart';
+
+class ItemsInfoController extends GetxController {
+  SpeechToText speechToText = SpeechToText();
+  RegisterRemoteData registerRemoteData = RegisterRemoteData(Get.put(Api()));
+
+  CountryMoodel? countryMoodel;
+  String governorateId = '';
+  String governorateName = '';
+  bool speechEnabled = false;
+  // String wordsSpoken = "";
+  double confidenceLevel = 0;
+  bool lock = false;
+  void initSpeech() async {
+    print("initialized");
+    speechEnabled = await speechToText.initialize();
+    print(speechEnabled);
+    update();
+  }
+
+  void startListening() async {
+    await speechToText.listen(
+      onResult: onSpeechResult,
+      // translate to arabic => by default english
+      localeId: "ar",
+    );
+
+    confidenceLevel = 0;
+    update();
+  }
+
+  void stopListening() async {
+    await speechToText.stop();
+    update();
+  }
+
+  void onSpeechResult(result) async {
+    searchController.text = "${result.recognizedWords}";
+    print("  result >>${result.recognizedWords}");
+    if (searchController.text == "") {
+      isSearch = false;
+      update();
+    } else {
+      isSearch = true;
+      await search();
+      update();
+    }
+    confidenceLevel = result.confidence;
+    update();
+  }
+
+  TextEditingController searchController = TextEditingController();
+
+  String? quantity;
+  // bool findTypes = true;
+  int? index;
+  List quantityList = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
+
+  Map<String, dynamic> product = {};
+  String? img;
+  String? name;
+  String? price;
+  String? priceAfterdiscount;
+  int? available;
+  ProductModel? productInfo;
+  StatuesRequest statuesRequest = StatuesRequest.none;
+  SearchRemoteData searchRemoteData = SearchRemoteData(Get.put(Api()));
+  bool isSearch = false;
+  List<ProductModel> searchItems = [];
+  OrdersRemoteData ordersRemoteData = OrdersRemoteData(Get.put(Api()));
+  bool succsess = false;
+  StoreOrderModel? storeOrderModel;
+
+  showMessageWarning() {
+    Get.defaultDialog(
+        title: S.of(Get.context!).warning,
+        titlePadding: EdgeInsets.only(top: 3.w),
+        titleStyle:
+            GoogleFonts.tajawal(fontSize: 4.5.w, fontWeight: FontWeight.bold),
+        content: Padding(
+          padding:
+              EdgeInsets.only(top: 3.w, right: 5.w, left: 5.w, bottom: 3.w),
+          child: Text(
+            S.of(Get.context!).specifyQuantity,
+            textAlign: TextAlign.center,
+            style:
+                GoogleFonts.tajawal(fontSize: 4.w, fontWeight: FontWeight.w700),
+          ),
+        ));
+  }
+
+  storeOrder(orderId, orderType, orderQuantity) async {
+    succsess = false;
+    //lock = true;
+    statuesRequest = StatuesRequest.loading;
+    update();
+    var response = await ordersRemoteData.storeOrder(
+      sharedPreferences!.getString("token"),
+      orderId.toString(),
+      orderType.toString(),
+      orderQuantity.toString(),
+      governorateId,
+      sharedPreferences!.getString("lat"),
+      sharedPreferences!.getString("lng"),
+    );
+    print(response);
+    statuesRequest = handlingData(response);
+    if (statuesRequest == StatuesRequest.success) {
+      Map<String, dynamic> responseBody = response['data'];
+
+      storeOrderModel = StoreOrderModel.fromJson(responseBody);
+      succsess = true;
+      lock = false;
+      print("succse store order");
+    } else if (statuesRequest == StatuesRequest.socketException) {
+      messageHandleException(S.of(Get.context!).noInternetApi);
+    } else if (statuesRequest == StatuesRequest.serverException) {
+      messageHandleException(S.of(Get.context!).serverException);
+    } else if (statuesRequest == StatuesRequest.unExpectedException) {
+      messageHandleException(S.of(Get.context!).unExcepectedException);
+    } else if (statuesRequest == StatuesRequest.defaultException) {
+      messageHandleException(S.of(Get.context!).defultException);
+    } else if (statuesRequest == StatuesRequest.serverError) {
+      messageHandleException(S.of(Get.context!).serverError);
+    } else if (statuesRequest == StatuesRequest.timeoutException) {
+      messageHandleException(S.of(Get.context!).timeOutException);
+    } else if (statuesRequest == StatuesRequest.unauthorizedException) {
+      messageHandleException(S.of(Get.context!).errorUnAuthorized);
+    }
+    update();
+  }
+
+  checkSearch(value) async {
+    if (value == "") {
+      isSearch = false;
+      update();
+    } else {
+      isSearch = true;
+      await search();
+      update();
+    }
+  }
+
+  search() async {
+    searchItems.clear();
+    statuesRequest = StatuesRequest.loading;
+    update();
+    var response = await searchRemoteData.getData(searchController.text);
+    print(response);
+    statuesRequest = handlingData(response);
+    if (statuesRequest == StatuesRequest.success) {
+      List responseBody = response['data']['items'];
+      searchItems = [];
+
+      searchItems.addAll(responseBody.map((e) => ProductModel.fromJson(e)));
+
+      return searchItems;
+    } else if (statuesRequest == StatuesRequest.socketException) {
+      messageHandleException(S.of(Get.context!).noInternetApi);
+    } else if (statuesRequest == StatuesRequest.serverException) {
+      messageHandleException(S.of(Get.context!).serverException);
+    } else if (statuesRequest == StatuesRequest.unExpectedException) {
+      messageHandleException(S.of(Get.context!).unExcepectedException);
+    } else if (statuesRequest == StatuesRequest.defaultException) {
+      messageHandleException(S.of(Get.context!).defultException);
+    } else if (statuesRequest == StatuesRequest.serverError) {
+      messageHandleException(S.of(Get.context!).serverError);
+    } else if (statuesRequest == StatuesRequest.timeoutException) {
+      messageHandleException(S.of(Get.context!).timeOutException);
+    } else if (statuesRequest == StatuesRequest.unauthorizedException) {
+      messageHandleException(S.of(Get.context!).errorUnAuthorized);
+    }
+    update();
+  }
+
+  message(message) {
+    Get.defaultDialog(
+        title: S.of(Get.context!).error,
+        content: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Column(
+            children: [
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.tajawal(
+                    fontSize: 3.5.w,
+                    color: LightMode.registerButtonBorder,
+                    fontWeight: FontWeight.w500),
+              ),
+              SizedBox(
+                height: 3.w,
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  InkWell(
+                    onTap: () {
+                      Get.off(() => const MainRegister());
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: LightMode.splash,
+                        borderRadius: BorderRadius.circular(3.w),
+                      ),
+                      width: 30.w,
+                      height: 5.h,
+                      child: Center(
+                        child: Text(
+                          S.of(Get.context!).signup,
+                          style: GoogleFonts.tajawal(
+                              fontSize: 4.w,
+                              color: LightMode.registerText,
+                              fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () {
+                      Get.back();
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: LightMode.splash),
+                        borderRadius: BorderRadius.circular(3.w),
+                      ),
+                      width: 30.w,
+                      height: 5.h,
+                      child: Center(
+                        child: Text(
+                          S.of(Get.context!).cancel,
+                          style: GoogleFonts.tajawal(
+                              fontSize: 4.w,
+                              color: LightMode.splash,
+                              fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ));
+  }
+
+  setIndex(
+      x, imgdata, namedata, pricedata, priceAfterdiscountdata, availableData) {
+    statuesRequest = StatuesRequest.loading;
+    update();
+
+    index = x;
+    img = imgdata;
+    name = namedata;
+    price = pricedata;
+    priceAfterdiscount = priceAfterdiscountdata;
+    available = availableData;
+    statuesRequest = StatuesRequest.none;
+
+    print(price);
+    update();
+  }
+
+  removeIndex() {
+    index = null;
+    update();
+  }
+
+  changeQuantity(String value) {
+    quantity = value;
+    update();
+  }
+
+  messageHandleException(message) {
+    Get.defaultDialog(
+        title: S.of(Get.context!).error,
+                titleStyle:GoogleFonts.tajawal(
+                  fontSize: 3.5.w,
+                  color: LightMode.registerButtonBorder,
+                  fontWeight: FontWeight.w500),
+        content: Column(
+          children: [
+            Text(
+              message,
+              style: GoogleFonts.tajawal(
+                  fontSize: 3.5.w,
+                  color: LightMode.registerButtonBorder,
+                  fontWeight: FontWeight.w500),
+            ),
+            InkWell(
+              onTap: () {
+                Get.back();
+              },
+              child: Container(
+                decoration: BoxDecoration(
+                  color: LightMode.splash,
+                  borderRadius: BorderRadius.circular(3.w),
+                ),
+                width: 30.w,
+                height: 5.h,
+                child: Center(
+                  child: Text(
+                    S.of(Get.context!).tryAgain,
+                    style: GoogleFonts.tajawal(
+                        fontSize: 4.w,
+                        color: LightMode.registerText,
+                        fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ));
+  }
+
+  getCountries(context) async {
+    var response = await registerRemoteData.getCountry();
+    print(response);
+
+    statuesRequest = handlingData(response);
+    if (statuesRequest == StatuesRequest.success) {
+      Map<String, dynamic> responseBody = response['data'][0];
+      print("response :: $responseBody");
+      countryMoodel = CountryMoodel.fromJson(responseBody);
+    } else if (statuesRequest == StatuesRequest.unprocessableException) {
+      messageHandleException(
+        S.of(context).error,
+      );
+    } else if (statuesRequest == StatuesRequest.socketException) {
+      messageHandleException(
+        S.of(context).noInternetApi,
+      );
+    } else if (statuesRequest == StatuesRequest.serverException) {
+      messageHandleException(
+        S.of(context).serverException,
+      );
+    } else if (statuesRequest == StatuesRequest.unExpectedException) {
+      messageHandleException(
+        S.of(context).unExcepectedException,
+      );
+    } else if (statuesRequest == StatuesRequest.defaultException) {
+      messageHandleException(
+        S.of(context).errorPhoneUseBeforeApi,
+      );
+    } else if (statuesRequest == StatuesRequest.serverError) {
+      messageHandleException(
+        S.of(context).serverError,
+      );
+    } else if (statuesRequest == StatuesRequest.timeoutException) {
+      messageHandleException(
+        S.of(context).timeOutException,
+      );
+    } else if (statuesRequest == StatuesRequest.unauthorizedException) {
+      messageHandleException(
+        S.of(context).passwordNotCorrect,
+      );
+    }
+
+    update();
+  }
+
+  showDialogGovernate() {
+    return showDialog(
+      context: Get.context!,
+      builder: (context) => AlertDialog(
+        contentPadding: EdgeInsets.zero,
+        content: SizedBox(
+          width: 80.w,
+          height: 50.h,
+          child: Column(
+            children: [
+              Container(
+                padding: EdgeInsets.only(right: 5.w),
+                alignment: Alignment.centerRight,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(2.w),
+                      topRight: Radius.circular(2.w)),
+                  color: LightMode.splash,
+                ),
+                width: 80.w,
+                height: 8.h,
+                child: Text(
+                  S.of(Get.context!).chooseGovernorateList,
+                  style: GoogleFonts.tajawal(
+                      fontSize: 5.w,
+                      color: LightMode.registerText,
+                      fontWeight: FontWeight.w500),
+                ),
+              ),
+              SizedBox(
+                width: 80.w,
+                height: 42.h,
+                child: ListView.separated(
+                    padding: EdgeInsets.zero,
+                    shrinkWrap: true,
+                    itemBuilder: (context, index) => InkWell(
+                          onTap: () {
+                            governorateId = countryMoodel!
+                                .governorates![index].id
+                                .toString();
+                            governorateName =
+                                countryMoodel!.governorates![index].name!;
+
+                            Get.back();
+                            update();
+                          },
+                          child: Container(
+                            padding: EdgeInsets.only(top: 3.w, right: 5.w),
+                            height: 6.h,
+                            width: 80.w,
+                            child: Text(
+                              countryMoodel!.governorates![index].name!,
+                              style: GoogleFonts.tajawal(
+                                  fontSize: 4.w,
+                                  color: LightMode.registerButtonBorder,
+                                  fontWeight: FontWeight.w500),
+                            ),
+                          ),
+                        ),
+                    separatorBuilder: (context, index) => const Divider(),
+                    itemCount: countryMoodel!.governorates!.length),
+              ),
+            ],
+          ),
+        ),
+      ),
+      barrierDismissible: false,
+    );
+  }
+
+  messageAddressDelivery(onPressConfirm) {
+    Get.defaultDialog(
+        onWillPop: () async {
+          return false;
+        },
+        barrierDismissible: false,
+        title: S.of(Get.context!).confirmAddress,
+        titleStyle: GoogleFonts.tajawal(
+            fontSize: 5.w,
+            color: LightMode.registerButtonBorder,
+            fontWeight: FontWeight.w500),
+        content: Builder(builder: (context) {
+          return GetBuilder<ItemsInfoController>(
+            builder: (controller) =>statuesRequest==StatuesRequest.loading?loading(25.h): Container(
+              margin: EdgeInsets.only(right: 3.w, left: 3.w, bottom: 3.w),
+              child: Column(
+                children: [
+                  InkWell(
+                    onTap: () async {
+                      await showDialogGovernate();
+
+                      // messageAddressDelivery(onPressConfirm);
+                    },
+                    child: Container(
+                      padding: EdgeInsets.only(right: 5.w),
+                      alignment: Alignment.centerRight,
+                      width: 70.w,
+                      height: 6.h,
+                      decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(3.w),
+                          border: Border.all(color: LightMode.splash)),
+                      child: Text(
+                        governorateName,
+                        style: GoogleFonts.tajawal(
+                            fontSize: 4.w,
+                            color: LightMode.splash,
+                            fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    height: 4.w,
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      InkWell(
+                        onTap: onPressConfirm,
+                        child: Container(
+                          alignment: Alignment.center,
+                          width: 30.w,
+                          height: 5.h,
+                          decoration: BoxDecoration(
+                              color: LightMode.splash,
+                              borderRadius: BorderRadius.circular(4.w),
+                              border: Border.all(
+                                  color: LightMode.splash, width: 2)),
+                          child: Text(
+                            S.of(context).bottomOfTypePage,
+                            style: GoogleFonts.tajawal(
+                                fontSize: 4.w,
+                                color: LightMode.registerText,
+                                fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () {
+                          Get.back();
+                        },
+                        child: Container(
+                          alignment: Alignment.center,
+                          width: 30.w,
+                          height: 5.h,
+                          decoration: BoxDecoration(
+                              color: LightMode.registerText,
+                              borderRadius: BorderRadius.circular(4.w),
+                              border: Border.all(
+                                  color: LightMode.splash, width: 2)),
+                          child: Text(
+                            S.of(context).cancel,
+                            style: GoogleFonts.tajawal(
+                                fontSize: 4.w,
+                                color: LightMode.splash,
+                                fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                      )
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        }));
+  }
+
+  @override
+  void onInit() {
+    governorateName = sharedPreferences!.getString("governorate") == null
+        ? ""
+        : sharedPreferences!.getString("governorate")!;
+    governorateId = sharedPreferences!.getString("governorateId") == null
+        ? ""
+        : sharedPreferences!.getString("governorateId")!;
+    getCountries(Get.context);
+    initSpeech();
+    product = Get.arguments['productInfo'];
+    print("data :${Get.arguments['productInfo']}");
+    productInfo = ProductModel.fromJson(product);
+    super.onInit();
+  }
+}

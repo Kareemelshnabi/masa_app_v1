@@ -1,24 +1,43 @@
-# Compiled Object files
-*.o
-*.obj
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+migrate_working_dir/
 
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
 
-# Compiled Static libraries
-*.a
-*.lib
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
 
-# Executables
-*.exe
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
 
-# DUB
-.dub
-docs.json
-__dummy.html
-docs/
+# Symbolication related
+app.*.symbols
 
-# Code coverage
-*.lst
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
